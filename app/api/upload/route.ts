@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { uploadToFivemanage } from '@/lib/fivemanage';
 import { uploadToR2 } from '@/lib/r2';
 import { createAdminClient } from '@/lib/supabase-server';
 
@@ -25,10 +26,21 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Upload to Cloudflare R2
-    const { key, url } = await uploadToR2(buffer, file.name, mimeType);
+    // Upload to Fivemanage (or fallback to R2 if FIVEMANAGE_API_KEY is not set)
+    let key: string;
+    let url: string;
 
-    // Determine current max sort order to append new item to end
+    if (process.env.FIVEMANAGE_API_KEY) {
+      const result = await uploadToFivemanage(buffer, file.name, mimeType);
+      key = result.key;
+      url = result.url;
+    } else {
+      const result = await uploadToR2(buffer, file.name, mimeType);
+      key = result.key;
+      url = result.url;
+    }
+
+    // Determine current max sort order
     const supabase = createAdminClient();
     const { data: maxItem } = await supabase
       .from('media_items')

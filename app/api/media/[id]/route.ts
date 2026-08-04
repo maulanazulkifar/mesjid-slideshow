@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase-server';
 import { deleteFromR2 } from '@/lib/r2';
+import { deleteFromFivemanage } from '@/lib/fivemanage';
 
-// PATCH: Update item properties (active state, duration, title, sort_order)
+// PATCH: Update item properties
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -38,7 +39,7 @@ export async function PATCH(
   }
 }
 
-// DELETE: Delete item from Supabase and R2 storage
+// DELETE: Delete item from Supabase and Storage
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -58,9 +59,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
-    // 2. Delete object from Cloudflare R2
+    // 2. Delete object from Fivemanage / R2 storage
     if (item.r2_key) {
-      await deleteFromR2(item.r2_key);
+      if (process.env.FIVEMANAGE_API_KEY) {
+        await deleteFromFivemanage(item.r2_key);
+      } else {
+        await deleteFromR2(item.r2_key);
+      }
     }
 
     // 3. Delete record from Supabase DB
