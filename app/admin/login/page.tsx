@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { Lock, Mail, Tv, AlertCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,14 +18,17 @@ export default function AdminLoginPage() {
     setErrorMsg(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (error) {
-        setErrorMsg(error.message || 'Gagal masuk. Periksa kembali email dan password Anda.');
-      } else if (data.session) {
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || 'Gagal masuk. Periksa kembali email dan password Anda.');
+      } else {
         router.push('/admin/dashboard');
       }
     } catch (err: any) {
@@ -38,7 +40,7 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-black text-white flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans">
-      {/* Subtle Background Glow Accent (Monochrome) */}
+      {/* Subtle Background Glow Accent */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-zinc-800/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-zinc-800/20 rounded-full blur-3xl pointer-events-none" />
 

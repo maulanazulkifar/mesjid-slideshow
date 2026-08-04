@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { MediaItem } from '@/types';
 import {
   UploadCloud,
@@ -39,36 +38,33 @@ export default function AdminDashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Check Auth & Session
+  // Check Auth & Session via Server Endpoint
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        // Option to enforce redirect to login if required
-      } else {
-        setUserEmail(session.user.email || 'Admin');
+      try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUserEmail(data.user.email || 'Admin');
+        }
+      } catch (err) {
+        console.error('Session check error:', err);
       }
     };
     checkSession();
-  }, [router]);
+  }, []);
 
-  // Fetch all media items
+  // Fetch all media items via Server Endpoint
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('media_items')
-        .select('*')
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching items:', error);
-      } else if (data) {
-        setItems(data as MediaItem[]);
+      const res = await fetch('/api/admin/media');
+      const data = await res.json();
+      if (res.ok && data.items) {
+        setItems(data.items as MediaItem[]);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Fetch items error:', err);
     } finally {
       setLoading(false);
     }
@@ -78,10 +74,15 @@ export default function AdminDashboardPage() {
     fetchItems();
   }, [fetchItems]);
 
-  // Handle Logout
+  // Handle Logout via Server Endpoint
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/admin/login');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      router.push('/admin/login');
+    }
   };
 
   // Handle File selection
@@ -96,7 +97,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Handle Upload Submission
+  // Handle Upload Submission via Server Endpoint
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
@@ -139,7 +140,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Toggle Active/Inactive status
+  // Toggle Active/Inactive status via Server Endpoint
   const toggleActive = async (id: string, currentStatus: boolean) => {
     try {
       const res = await fetch(`/api/media/${id}`, {
@@ -157,7 +158,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Update Duration
+  // Update Duration via Server Endpoint
   const updateDuration = async (id: string, newDuration: number) => {
     if (isNaN(newDuration) || newDuration < 1) return;
     try {
@@ -176,7 +177,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Move item position up/down
+  // Move item position up/down via Server Endpoint
   const moveOrder = async (index: number, direction: 'up' | 'down') => {
     if (
       (direction === 'up' && index === 0) ||
@@ -212,7 +213,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Delete media item
+  // Delete media item via Server Endpoint
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus media "${title}"?`)) return;
 

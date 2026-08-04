@@ -10,28 +10,10 @@ export default function DisplayPage() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState<string>('');
-  const [currentDate, setCurrentDate] = useState<string>('');
   const [showControls, setShowControls] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mouseMoveTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  // Digital Clock Update
-  useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
-      setCurrentDate(
-        now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      );
-    };
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Preload image assets in background to ensure smooth TV transition
   const preloadImages = (mediaList: MediaItem[]) => {
@@ -43,20 +25,13 @@ export default function DisplayPage() {
     });
   };
 
-  // Fetch active media items from Supabase
+  // Fetch active media items via secure Server Endpoint
   const fetchActiveItems = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('media_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching media:', error);
-      } else if (data) {
-        const fetchedItems = data as MediaItem[];
+      const res = await fetch('/api/display/media');
+      const data = await res.json();
+      if (res.ok && data.items) {
+        const fetchedItems = data.items as MediaItem[];
         setItems((prevItems) => {
           const isIdentical =
             prevItems.length === fetchedItems.length &&
@@ -84,7 +59,7 @@ export default function DisplayPage() {
     }
   }, []);
 
-  // Initial fetch + Fast polling every 10s + Supabase Realtime WebSocket
+  // Initial fetch + Fast polling every 10s + Supabase Realtime WebSocket listener
   useEffect(() => {
     fetchActiveItems();
     
