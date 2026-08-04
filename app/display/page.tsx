@@ -82,18 +82,18 @@ export default function DisplayPage() {
     };
   }, [fetchActiveItems]);
 
+  const itemsRef = useRef<MediaItem[]>([]);
+  itemsRef.current = items;
+
   // Transition to next slide
   const nextSlide = useCallback(() => {
-    setItems((currentItems) => {
-      if (currentItems.length === 0) return currentItems;
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % currentItems.length);
-      return currentItems;
-    });
+    if (itemsRef.current.length <= 1) return;
+    setCurrentIndex((prevIndex) => (prevIndex + 1) % itemsRef.current.length);
   }, []);
 
   // Slide timer logic
   useEffect(() => {
-    if (items.length === 0) return;
+    if (items.length <= 1) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -101,7 +101,7 @@ export default function DisplayPage() {
     const currentItem = items[safeIndex];
     if (!currentItem) return;
 
-    const durationMs = Math.max(currentItem.duration || 10, 3) * 1000;
+    const durationMs = Math.max(currentItem.duration || 10, 2) * 1000;
 
     if (currentItem.type === 'image') {
       timerRef.current = setTimeout(() => {

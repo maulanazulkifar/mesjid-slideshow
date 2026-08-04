@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { createAdminClient } from '@/lib/supabase-server';
 import { deleteFromR2 } from '@/lib/r2';
 
 // PATCH: Update item properties (active state, duration, title, sort_order)
