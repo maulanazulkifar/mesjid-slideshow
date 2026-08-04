@@ -19,7 +19,7 @@ export async function uploadToFivemanage(
     : 'https://api.fivemanage.com/api/v2/file';
 
   const formData = new FormData();
-  const fileBlob = new Blob([fileBuffer], { type: contentType });
+  const fileBlob = new Blob([fileBuffer as unknown as BlobPart], { type: contentType });
   formData.append('file', fileBlob, fileName);
   formData.append('name', fileName);
 
