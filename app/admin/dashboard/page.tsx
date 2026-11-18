@@ -476,10 +476,11 @@ export default function AdminDashboardPage() {
               {items.map((item, index) => (
                 <div
                   key={item.id}
-                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all gap-4 ${item.is_active
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all gap-4 ${
+                    item.is_active
                       ? 'bg-black border-zinc-800'
                       : 'bg-black/50 border-zinc-900 opacity-40'
-                    }`}
+                  }`}
                 >
                   {/* Left: Thumbnail & Info */}
                   <div className="flex items-center gap-4 min-w-0">
@@ -560,10 +561,11 @@ export default function AdminDashboardPage() {
                     {/* Active Toggle */}
                     <button
                       onClick={() => toggleActive(item.id, item.is_active)}
-                      className={`p-2 rounded-xl border transition-colors ${item.is_active
+                      className={`p-2 rounded-xl border transition-colors ${
+                        item.is_active
                           ? 'bg-white text-black border-white hover:bg-zinc-200'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
-                        }`}
+                      }`}
                       title={item.is_active ? 'Sembunyikan' : 'Tampilkan'}
                     >
                       {item.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
