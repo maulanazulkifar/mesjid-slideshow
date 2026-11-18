@@ -117,8 +117,8 @@ export default function AdminDashboardPage() {
       const mimeType = file.type || 'application/octet-stream';
       const isVideo = mimeType.startsWith('video/');
 
-      // 1. Minta presigned URL upload langsung ke Cloudflare R2
-      setUploadStatus('Mendapatkan izin upload ke Cloudflare R2...');
+      // 1. Cek provider storage dan minta URL upload
+      setUploadStatus('Menghubungkan ke storage...');
       const presignRes = await fetch('/api/upload/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,56 +129,79 @@ export default function AdminDashboardPage() {
       });
 
       const presignData = await presignRes.json();
-      if (!presignRes.ok || !presignData.uploadUrl) {
-        throw new Error(presignData.error || 'Gagal menyiapkan URL upload R2');
+      if (!presignRes.ok) {
+        throw new Error(presignData.error || 'Gagal menyiapkan upload');
       }
 
-      // 2. Upload file langsung ke Cloudflare R2 via PUT (Bypass Vercel limit)
-      setUploadStatus('Mengunggah file ke Cloudflare R2...');
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', presignData.uploadUrl, true);
-        xhr.setRequestHeader('Content-Type', mimeType);
+      // Mode A: Fivemanage (jika hanya FIVEMANAGE_API_KEY yang diisi)
+      if (presignData.provider === 'fivemanage') {
+        setUploadStatus('Mengunggah ke Fivemanage...');
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title || file.name);
+        formData.append('duration', duration.toString());
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percent = Math.round((event.loaded / event.total) * 100);
-            setUploadProgress(percent);
-          }
-        };
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`Gagal upload ke R2 (Status: ${xhr.status})`));
-          }
-        };
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Gagal mengunggah file ke Fivemanage');
+        }
+      } else {
+        // Mode B: Cloudflare R2 Direct Upload (Bypass Vercel limit)
+        if (!presignData.uploadUrl) {
+          throw new Error('URL upload R2 tidak ditemukan');
+        }
 
-        xhr.onerror = () => {
-          reject(new Error('Gagal upload ke R2: Periksa konfigurasi CORS pada bucket Cloudflare R2 Anda'));
-        };
+        setUploadStatus('Mengunggah file ke Cloudflare R2...');
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', presignData.uploadUrl, true);
+          xhr.setRequestHeader('Content-Type', mimeType);
 
-        xhr.send(file);
-      });
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const percent = Math.round((event.loaded / event.total) * 100);
+              setUploadProgress(percent);
+            }
+          };
 
-      // 3. Simpan data metadata media ke Supabase
-      setUploadStatus('Menyimpan data banner...');
-      const saveRes = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title || file.name,
-          type: isVideo ? 'video' : 'image',
-          url: presignData.publicUrl,
-          r2_key: presignData.key,
-          duration: duration,
-        }),
-      });
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`Gagal upload ke R2 (Status: ${xhr.status})`));
+            }
+          };
 
-      const saveData = await saveRes.json();
-      if (!saveRes.ok || saveData.error) {
-        throw new Error(saveData.error || 'Gagal menyimpan data ke database');
+          xhr.onerror = () => {
+            reject(new Error('Gagal upload ke R2: Periksa konfigurasi CORS pada bucket Cloudflare R2 Anda'));
+          };
+
+          xhr.send(file);
+        });
+
+        // Simpan data metadata media ke Supabase
+        setUploadStatus('Menyimpan data banner...');
+        const saveRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title || file.name,
+            type: isVideo ? 'video' : 'image',
+            url: presignData.publicUrl,
+            r2_key: presignData.key,
+            duration: duration,
+          }),
+        });
+
+        const saveData = await saveRes.json();
+        if (!saveRes.ok || saveData.error) {
+          throw new Error(saveData.error || 'Gagal menyimpan data ke database');
+        }
       }
 
       setUploadSuccess(true);

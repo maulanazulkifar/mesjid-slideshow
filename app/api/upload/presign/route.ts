@@ -23,10 +23,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check configured storage provider
+    const hasFivemanage = Boolean(process.env.FIVEMANAGE_API_KEY);
+    const hasR2 = Boolean(process.env.R2_ACCESS_KEY_ID && process.env.R2_ACCOUNT_ID);
+
+    // If Fivemanage is configured and R2 is not, inform frontend to fallback to Fivemanage
+    if (hasFivemanage && !hasR2) {
+      return NextResponse.json({
+        provider: 'fivemanage',
+      });
+    }
+
+    // Default: Cloudflare R2 presigned upload
     const { uploadUrl, key, publicUrl } = await getPresignedUploadUrl(fileName, contentType);
 
     return NextResponse.json({
-      success: true,
+      provider: 'r2',
       uploadUrl,
       key,
       publicUrl,

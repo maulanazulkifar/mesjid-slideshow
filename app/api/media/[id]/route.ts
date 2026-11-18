@@ -48,10 +48,10 @@ export async function DELETE(
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // 1. Fetch item to get r2_key
+    // 1. Fetch item to get r2_key and url
     const { data: item, error: fetchError } = await supabase
       .from('media_items')
-      .select('r2_key')
+      .select('r2_key, url')
       .eq('id', id)
       .single();
 
@@ -61,7 +61,8 @@ export async function DELETE(
 
     // 2. Delete object from Fivemanage / R2 storage
     if (item.r2_key) {
-      if (process.env.FIVEMANAGE_API_KEY) {
+      const isFivemanageItem = item.url?.includes('fivemanage') || Boolean(process.env.FIVEMANAGE_API_KEY && !process.env.R2_ACCESS_KEY_ID);
+      if (isFivemanageItem) {
         await deleteFromFivemanage(item.r2_key);
       } else {
         await deleteFromR2(item.r2_key);
