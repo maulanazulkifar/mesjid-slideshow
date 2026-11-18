@@ -34,6 +34,8 @@ export default function AdminDashboardPage() {
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState<number>(10);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadStatus, setUploadStatus] = useState<string>('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -97,7 +99,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Handle Upload Submission via Server Endpoint
+  // Handle Upload Submission via Direct R2 Presigned URL
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
@@ -108,28 +110,83 @@ export default function AdminDashboardPage() {
     setUploading(true);
     setErrorMsg(null);
     setUploadSuccess(false);
+    setUploadProgress(0);
+    setUploadStatus('Mempersiapkan upload...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', title || file.name);
-      formData.append('duration', duration.toString());
+      const mimeType = file.type || 'application/octet-stream';
+      const isVideo = mimeType.startsWith('video/');
 
-      const res = await fetch('/api/upload', {
+      // 1. Minta presigned URL upload langsung ke Cloudflare R2
+      setUploadStatus('Mendapatkan izin upload ke Cloudflare R2...');
+      const presignRes = await fetch('/api/upload/presign', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: mimeType,
+        }),
       });
 
-      const data = await res.json();
+      const presignData = await presignRes.json();
+      if (!presignRes.ok || !presignData.uploadUrl) {
+        throw new Error(presignData.error || 'Gagal menyiapkan URL upload R2');
+      }
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Gagal mengunggah file');
+      // 2. Upload file langsung ke Cloudflare R2 via PUT (Bypass Vercel limit)
+      setUploadStatus('Mengunggah file ke Cloudflare R2...');
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', presignData.uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', mimeType);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(percent);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Gagal upload ke R2 (Status: ${xhr.status})`));
+          }
+        };
+
+        xhr.onerror = () => {
+          reject(new Error('Gagal upload ke R2: Periksa konfigurasi CORS pada bucket Cloudflare R2 Anda'));
+        };
+
+        xhr.send(file);
+      });
+
+      // 3. Simpan data metadata media ke Supabase
+      setUploadStatus('Menyimpan data banner...');
+      const saveRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title || file.name,
+          type: isVideo ? 'video' : 'image',
+          url: presignData.publicUrl,
+          r2_key: presignData.key,
+          duration: duration,
+        }),
+      });
+
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || saveData.error) {
+        throw new Error(saveData.error || 'Gagal menyimpan data ke database');
       }
 
       setUploadSuccess(true);
       setFile(null);
       setTitle('');
       setDuration(10);
+      setUploadProgress(0);
+      setUploadStatus('');
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       fetchItems();
@@ -356,6 +413,21 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            {uploading && (
+              <div className="space-y-2 p-4 rounded-xl bg-zinc-900/60 border border-zinc-800">
+                <div className="flex justify-between text-xs text-zinc-400">
+                  <span>{uploadStatus}</span>
+                  <span className="font-mono font-bold text-white">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-white h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={uploading || !file}
@@ -364,7 +436,7 @@ export default function AdminDashboardPage() {
               {uploading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-black" />
-                  <span>MENGUNGGAH FILE...</span>
+                  <span>{uploadProgress > 0 ? `MENGUNGGAH (${uploadProgress}%)...` : 'MEMPROSES...'}</span>
                 </>
               ) : (
                 <>
@@ -404,11 +476,10 @@ export default function AdminDashboardPage() {
               {items.map((item, index) => (
                 <div
                   key={item.id}
-                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all gap-4 ${
-                    item.is_active
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all gap-4 ${item.is_active
                       ? 'bg-black border-zinc-800'
                       : 'bg-black/50 border-zinc-900 opacity-40'
-                  }`}
+                    }`}
                 >
                   {/* Left: Thumbnail & Info */}
                   <div className="flex items-center gap-4 min-w-0">
@@ -489,11 +560,10 @@ export default function AdminDashboardPage() {
                     {/* Active Toggle */}
                     <button
                       onClick={() => toggleActive(item.id, item.is_active)}
-                      className={`p-2 rounded-xl border transition-colors ${
-                        item.is_active
+                      className={`p-2 rounded-xl border transition-colors ${item.is_active
                           ? 'bg-white text-black border-white hover:bg-zinc-200'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
-                      }`}
+                        }`}
                       title={item.is_active ? 'Sembunyikan' : 'Tampilkan'}
                     >
                       {item.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}

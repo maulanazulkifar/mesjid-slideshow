@@ -5,6 +5,53 @@ import { createAdminClient } from '@/lib/supabase-server';
 
 export async function POST(req: NextRequest) {
   try {
+    const contentTypeHeader = req.headers.get('content-type') || '';
+
+    // Direct Upload completion: Client uploaded to R2 directly and passes metadata as JSON
+    if (contentTypeHeader.includes('application/json')) {
+      const body = await req.json();
+      const { title = 'Untitled', type = 'image', url, r2_key, duration = 10 } = body;
+
+      if (!url) {
+        return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+      }
+
+      const supabase = createAdminClient();
+      const { data: maxItem } = await supabase
+        .from('media_items')
+        .select('sort_order')
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextSortOrder = maxItem ? (maxItem.sort_order || 0) + 1 : 1;
+      const parsedDuration = typeof duration === 'number' ? duration : parseInt(duration, 10);
+
+      const { data, error } = await supabase
+        .from('media_items')
+        .insert([
+          {
+            title,
+            type: type === 'video' ? 'video' : 'image',
+            url,
+            r2_key: r2_key || '',
+            duration: isNaN(parsedDuration) || parsedDuration < 1 ? 10 : parsedDuration,
+            sort_order: nextSortOrder,
+            is_active: true,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase DB Insert error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, item: data });
+    }
+
+    // Fallback: Legacy FormData upload through server
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const title = (formData.get('title') as string) || 'Untitled';

@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const accountId = process.env.R2_ACCOUNT_ID || '';
 const accessKeyId = process.env.R2_ACCESS_KEY_ID || '';
@@ -17,6 +18,36 @@ export const r2Client = new S3Client({
 });
 
 /**
+ * Generate a presigned PUT URL for direct browser-to-R2 upload
+ */
+export async function getPresignedUploadUrl(
+  fileName: string,
+  contentType: string
+): Promise<{ uploadUrl: string; key: string; publicUrl: string }> {
+  const timestamp = Date.now();
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const key = `slides/${timestamp}_${safeFileName}`;
+
+  const command = new PutObjectCommand({
+    Bucket: r2Bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  // Presigned URL valid for 15 minutes (900 seconds)
+  const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: 900 });
+
+  const baseUrl = r2PublicUrl.endsWith('/') ? r2PublicUrl.slice(0, -1) : r2PublicUrl;
+  const publicUrl = baseUrl ? `${baseUrl}/${key}` : `https://${r2Bucket}.${accountId}.r2.cloudflarestorage.com/${key}`;
+
+  return {
+    uploadUrl,
+    key,
+    publicUrl,
+  };
+}
+
+/**
  * Upload a file to Cloudflare R2
  */
 export async function uploadToR2(
@@ -25,7 +56,7 @@ export async function uploadToR2(
   contentType: string
 ): Promise<{ key: string; url: string }> {
   const timestamp = Date.now();
-  const safeFileName = fileName.replace(/[^a-zA-Z0-0.-]/g, '_');
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
   const key = `slides/${timestamp}_${safeFileName}`;
 
   const command = new PutObjectCommand({
